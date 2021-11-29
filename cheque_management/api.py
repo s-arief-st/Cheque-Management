@@ -12,20 +12,12 @@ def pe_before_submit(self, method):
 		notes_acc = frappe.db.get_value("Company", self.company, "receivable_notes_account")
 		if not notes_acc:
 			frappe.throw(_("Receivable Notes Account not defined in the company setup page"))
-		rec_acc = frappe.db.get_value("Company", self.company, "default_receivable_account")
-		if not rec_acc:
-			frappe.throw(_("Default Receivable Account not defined in the company setup page"))
 		self.db_set("paid_to", notes_acc)
-		self.db_set("paid_from", rec_acc)
 	if self.mode_of_payment == "Cheque" and self.payment_type == "Pay":
 		notes_acc = frappe.db.get_value("Company", self.company, "payable_notes_account")
 		if not notes_acc:
 			frappe.throw(_("Payable Notes Account not defined in the company setup page"))
-		rec_acc = frappe.db.get_value("Company", self.company, "default_payable_account")
-		if not rec_acc:
-			frappe.throw(_("Default Payable Account not defined in the company setup page"))
 		self.db_set("paid_from", notes_acc)
-		self.db_set("paid_to", rec_acc)
 
 def pe_on_submit(self, method):
 	hh_currency = erpnext.get_company_currency(self.company)
@@ -38,9 +30,11 @@ def pe_on_submit(self, method):
 		if not notes_acc:
 			frappe.throw(_("Receivable Notes Account not defined in the company setup page"))
 		self.db_set("paid_to", notes_acc)
-		rec_acc = frappe.db.get_value("Company", self.company, "default_receivable_account")
-		if not rec_acc:
-			frappe.throw(_("Default Receivable Account not defined in the company setup page"))
+		crs_acc = frappe.db.get_value("Company", self.company, "cross_transaction_account")
+		if not crs_acc:
+			frappe.throw(_("Cross Transaction Account not defined in the company setup page"))
+
+		make_journal_entry(self, self.paid_from, crs_acc, self.base_received_amount, self.posting_date)
 		rc = frappe.new_doc("Receivable Cheques")
 		rc.cheque_no = self.reference_no 
 		rc.cheque_date = self.reference_date 
@@ -59,7 +53,7 @@ def pe_on_submit(self, method):
 			{
 				"status": "Cheque Received",
 				"transaction_date": nowdate(),
-				"credit_account": rec_acc,
+				"credit_account": self.paid_from,
 				"debit_account": notes_acc
 			}
 		])
@@ -112,4 +106,34 @@ def pe_on_cancel(self, method):
 				and cheque_status<>'Cheque Cancelled'""" , (self.name)):
 		frappe.throw(_("Cannot Cancel this Payment Entry as it is Linked with Payable Cheque"))
 	return
-	
+
+def make_journal_entry(self, account1, account2, amount, posting_date=None, party_type=None, party=None, cost_center=None):
+		jv = frappe.new_doc("Journal Entry")
+		jv.posting_date = posting_date or nowdate()
+		jv.company = self.company
+		jv.cheque_no = self.reference_no
+		jv.cheque_date = self.reference_date
+		jv.user_remark = self.remarks
+		jv.multi_currency = 0
+		jv.set("accounts", [
+			{
+				"account": account1,
+				"party_type": self.party_type,
+				"party": self.party,
+				"cost_center": None,
+				"project": self.project,
+				"debit_in_account_currency": amount if amount > 0 else 0,
+				"credit_in_account_currency": abs(amount) if amount < 0 else 0
+			}, {
+				"account": account2,
+				"party_type": None,
+				"party": None,
+				"cost_center": None,
+				"project": self.project,
+				"credit_in_account_currency": amount if amount > 0 else 0,
+				"debit_in_account_currency": abs(amount) if amount < 0 else 0
+			}
+		])
+		jv.insert(ignore_permissions=True)
+		jv.submit()
+		frappe.db.commit()

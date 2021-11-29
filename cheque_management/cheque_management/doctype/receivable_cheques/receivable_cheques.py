@@ -43,18 +43,24 @@ class ReceivableCheques(Document):
 		elif len(uc_acc) < 4:
 			frappe.throw(_("Cheques Under Collection Account not defined in the company setup page"))
 
-		rec_acc = frappe.db.get_value("Company", self.company, "default_receivable_account")
-		if not rec_acc:
-			frappe.throw(_("Default Receivable Account not defined in the company setup page"))
-		elif len(notes_acc) < 4:
-			frappe.throw(_("Default Receivable Account not defined in the company setup page"))
+		ct_acc = frappe.db.get_value("Company", self.company, "cross_transaction_account")
+		if not ct_acc:
+			frappe.throw(_("Cross Transaction Account not defined in the company setup page"))
+		elif len(ct_acc) < 4:
+			frappe.throw(_("Cross Transaction Account not defined in the company setup page"))
+
+		rec_acc = frappe.db.get_value("Payment Entry", self.payment_entry, "paid_from")
 		if self.cheque_status == "Cheque Deposited":
 			self.make_journal_entry(uc_acc, notes_acc, self.amount, self.posting_date, party_type=None, party=None, cost_center=None, 
 					save=True, submit=True)
 		if self.cheque_status == "Cheque Cancelled":
 			self.cancel_payment_entry()
 		if self.cheque_status == "Cheque Collected":
-			self.make_journal_entry(self.deposit_bank, uc_acc, self.amount, self.posting_date, party_type=None, party=None, cost_center=None, 
+			party = frappe.db.get_value("Payment Entry", self.payment_entry, "party")
+			party_type = frappe.db.get_value("Payment Entry", self.payment_entry, "party_type")
+			self.make_journal_entry(ct_acc, uc_acc, self.amount, self.posting_date, party_type=None, party=None, cost_center=None, 
+					save=True, submit=True)
+			self.make_journal_entry(self.deposit_bank, rec_acc, self.amount, self.posting_date, party_type, party, cost_center=None, 
 					save=True, submit=True)
 		if self.cheque_status == "Cheque Returned":
 			self.make_journal_entry(notes_acc, uc_acc, self.amount, self.posting_date, party_type=None, party=None, cost_center=None, 
@@ -122,8 +128,8 @@ class ReceivableCheques(Document):
 				"credit_in_account_currency": abs(amount) if amount < 0 else 0
 			}, {
 				"account": account2,
-				"party_type": party_type if self.cheque_status == "Cheque Received" else None,
-				"party": party if self.cheque_status == "Cheque Received" else None,
+				"party_type": party_type if self.cheque_status == "Cheque Received" or self.cheque_status == "Cheque Collected" else None,
+				"party": party if self.cheque_status == "Cheque Received" or self.cheque_status == "Cheque Collected" else None,
 				"cost_center": cost_center,
 				"project": self.project,
 				"credit_in_account_currency": amount if amount > 0 else 0,
