@@ -52,19 +52,19 @@ class ReceivableCheques(Document):
 		rec_acc = frappe.db.get_value("Payment Entry", self.payment_entry, "paid_from")
 		if self.cheque_status == "Cheque Deposited":
 			self.make_journal_entry(uc_acc, notes_acc, self.amount, self.posting_date, party_type=None, party=None, cost_center=None, 
-					save=True, submit=True)
+					save=True, submit=True, last=False)
 		if self.cheque_status == "Cheque Cancelled":
 			self.cancel_payment_entry()
 		if self.cheque_status == "Cheque Collected":
 			party = frappe.db.get_value("Payment Entry", self.payment_entry, "party")
 			party_type = frappe.db.get_value("Payment Entry", self.payment_entry, "party_type")
 			self.make_journal_entry(ct_acc, uc_acc, self.amount, self.posting_date, party_type=None, party=None, cost_center=None, 
-					save=True, submit=True)
+					save=True, submit=True, last=False)
 			self.make_journal_entry(self.deposit_bank, rec_acc, self.amount, self.posting_date, party_type, party, cost_center=None, 
-					save=True, submit=True)
+					save=True, submit=True, last=True)
 		if self.cheque_status == "Cheque Returned":
 			self.make_journal_entry(notes_acc, uc_acc, self.amount, self.posting_date, party_type=None, party=None, cost_center=None, 
-					save=True, submit=True)
+					save=True, submit=True, last=False)
 		if self.cheque_status == "Cheque Rejected":
 			self.cancel_payment_entry()
 			
@@ -109,7 +109,7 @@ class ReceivableCheques(Document):
 
 
 	def make_journal_entry(self, account1, account2, amount, posting_date=None, party_type=None, party=None, cost_center=None, 
-							save=True, submit=False):
+							save=True, submit=False, last=False):
 		jv = frappe.new_doc("Journal Entry")
 		jv.posting_date = posting_date or nowdate()
 		jv.company = self.company
@@ -133,7 +133,9 @@ class ReceivableCheques(Document):
 				"cost_center": cost_center,
 				"project": self.project,
 				"credit_in_account_currency": amount if amount > 0 else 0,
-				"debit_in_account_currency": abs(amount) if amount < 0 else 0
+				"debit_in_account_currency": abs(amount) if amount < 0 else 0,
+				"reference_type": "Journal Entry" if last == True else None,
+				"reference_name": self.reference_journal if last == True else None
 			}
 		])
 		if save or submit:

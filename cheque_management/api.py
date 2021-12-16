@@ -34,7 +34,7 @@ def pe_on_submit(self, method):
 		if not crs_acc:
 			frappe.throw(_("Cross Transaction Account not defined in the company setup page"))
 
-		make_journal_entry(self, self.paid_from, crs_acc, self.base_received_amount, self.posting_date)
+		journal = make_journal_entry(self, self.paid_from, crs_acc, self.base_received_amount, self.posting_date)
 		rc = frappe.new_doc("Receivable Cheques")
 		rc.cheque_no = self.reference_no 
 		rc.cheque_date = self.reference_date 
@@ -47,6 +47,7 @@ def pe_on_submit(self, method):
 		rc.amount = self.base_received_amount
 		rc.exchange_rate = 1
 		rc.remarks = self.remarks
+		rc.reference_journal = journal.name
 		rc.docstatus=1
 		rc.cheque_status = 'Cheque Received'
 		rc.set("status_history", [
@@ -110,6 +111,7 @@ def pe_on_cancel(self, method):
 def make_journal_entry(self, account1, account2, amount, posting_date=None, party_type=None, party=None, cost_center=None):
 		jv = frappe.new_doc("Journal Entry")
 		jv.posting_date = posting_date or nowdate()
+		jv.due_date = posting_date or nowdate()
 		jv.company = self.company
 		jv.cheque_no = self.reference_no
 		jv.cheque_date = self.reference_date
@@ -137,3 +139,4 @@ def make_journal_entry(self, account1, account2, amount, posting_date=None, part
 		jv.insert(ignore_permissions=True)
 		jv.submit()
 		frappe.db.commit()
+		return jv
